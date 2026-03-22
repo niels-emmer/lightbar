@@ -2,7 +2,9 @@
 
 An AI-controlled RGB gaming lightbar. Claude Haiku generates evolving light programs — themes, moods, patterns — and a Python engine executes them in real time at 10 Hz directly to the hardware. You can steer it by typing prompts in a small web UI.
 
-This is not a product. It has no real use case. It exists because it was fun to build, and because building it taught more about agentic AI coding in a few hours than weeks of reading about it could. The key insight: just as Claude Code closes the UI design loop by letting the agent open a browser and see what it built, pointing a webcam at the lightbar gave the agent eyes on the physical world it was controlling — turning a blind code-and-hope process into a genuine observe-correct-iterate loop with real hardware.
+This is not a product. It has no real use case. It exists because it was fun to build, and because building it taught more about agentic AI coding in a few hours than weeks of reading about it could.
+
+The key insight: just as Claude Code closes the UI design loop by letting the agent open a browser and see what it built, pointing a webcam at the lightbar gave the agent eyes on the physical world it was controlling — turning a blind code-and-hope process into a genuine observe-correct-iterate loop with real hardware.
 
 ---
 
