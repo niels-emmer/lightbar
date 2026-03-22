@@ -1,6 +1,8 @@
-import tinytuya
+import base64
 import threading
 import logging
+
+import tinytuya
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +78,29 @@ class LightbarDriver:
                 return True
             except Exception as e:
                 logger.warning(f"Lightbar set_power failed: {e}")
+                self._online = False
+                return False
+
+    def set_scene(self, scene_type: int, speed: int, colors: list[tuple[int, int, int]]) -> bool:
+        """Send a hardware scene to DP51.
+
+        scene_type: 0=static, 1=gradient/flow, 2=flash, 3=wave
+        speed: 0-100
+        colors: list of (r, g, b) tuples, 1-7 entries, each 0-255
+        """
+        data = bytes([max(0, min(3, scene_type)), max(0, min(100, speed)), 10])
+        for r, g, b in colors[:7]:
+            data += bytes([max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b))])
+        payload = base64.b64encode(data).decode()
+        with self._lock:
+            try:
+                d = self._connect()
+                d.set_value(21, "scene")
+                d.set_value(51, payload)
+                self._online = True
+                return True
+            except Exception as e:
+                logger.warning(f"Lightbar set_scene failed: {e}")
                 self._online = False
                 return False
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from config import get_settings
@@ -55,6 +55,14 @@ app.add_middleware(
 @app.get("/api/health")
 def health():
     return {"ok": True}
+
+
+@app.get("/cam", response_class=HTMLResponse)
+def cam():
+    return """<!doctype html><html><body style="margin:0;background:#000">
+<video id="v" autoplay style="width:100vw;height:100vh;object-fit:cover"></video>
+<script>navigator.mediaDevices.getUserMedia({video:true}).then(s=>{document.getElementById('v').srcObject=s})</script>
+</body></html>"""
 
 
 @app.get("/api/status", response_model=EngineStatus)

@@ -39,6 +39,7 @@ SYSTEM_PROMPT = (
 PATTERN_CATALOG = """
 PATTERNS (pick by name, combine into acts):
 
+Software patterns — single color animated by Python:
 breathe   hue(0-360), saturation(0-100), value_min(0-50), value_max(50-100), period_sec(2-10)
 wheel     saturation(0-100), value(20-100), start_hue(0-360), deg_per_sec(10-120)
 pulse     hue(0-360), saturation(0-100), value_peak(60-100), period_sec(0.5-4)
@@ -48,6 +49,11 @@ lfo_pair  hue_a(0-360), hue_b(0-360), saturation(0-100), value(20-90), period_se
 thunder   bg_hue(200-260), bg_saturation(40-80), bg_value(3-15), flash_rate_per_min(5-25)
 campfire  intensity(0.3-1.0)
 drift     hue(0-360), saturation(50-100), value(30-70), hue_drift(10-60), value_drift(10-35), speed(0.2-1.0)
+
+Hardware scenes — multi-color animations running natively on the device:
+scene     scene_type(0=static,1=flow,2=flash,3=wave), speed(0-100), colors([[R,G,B],...] 1-7 entries, each 0-255)
+          Use vivid RGB colors. scene_type 1 flows smoothly between colors, 2 flashes them, 3 creates a wave.
+          Example: {"pattern":"scene","scene_type":1,"speed":40,"colors":[[200,50,255],[50,200,255],[255,80,50]],"duration_sec":120}
 """
 
 WEATHER_CODES = {
@@ -351,15 +357,32 @@ Rules:
         self._log("info", f'"{experiment.theme}" complete')
 
     async def _run_act(self, act: dict, duration_sec: float):
-        """Run a single act for up to duration_sec seconds at TICK Hz."""
+        """Run a single act for up to duration_sec seconds."""
         loop = asyncio.get_event_loop()
         pattern_name = act.get("pattern", "drift")
-        params = {k: v for k, v in act.items() if k not in ("pattern", "duration_sec")}
 
+        # ── Hardware scene — send once, device animates natively ──────────────
+        if pattern_name == "scene":
+            scene_type = int(act.get("scene_type", 1))
+            speed = int(act.get("speed", 40))
+            colors = [tuple(c) for c in act.get("colors", [[255, 255, 255]])]
+            await loop.run_in_executor(
+                None, lambda: self._lb.set_scene(scene_type, speed, colors)
+            )
+            # Hold for duration, checking for abort every tick
+            elapsed = 0.0
+            while elapsed < duration_sec:
+                if self._abort_current.is_set():
+                    return
+                await asyncio.sleep(TICK)
+                elapsed += TICK
+            return
+
+        # ── Software pattern — compute HSV at 10 Hz ───────────────────────────
+        params = {k: v for k, v in act.items() if k not in ("pattern", "duration_sec")}
         act_start = loop.time()
         state = None
         prev_h, prev_s, prev_v = self.current_h, self.current_s, self.current_v
-        # Smooth crossfade from previous color over first 1.5 sec
         crossfade_dur = min(1.5, duration_sec * 0.15)
 
         while True:
@@ -375,7 +398,6 @@ Rules:
             s = max(0.0, min(100.0, s))
             v = max(0.0, min(100.0, v))
 
-            # Apply crossfade at act boundary
             if t < crossfade_dur:
                 frac = t / crossfade_dur
                 dh = h - prev_h
