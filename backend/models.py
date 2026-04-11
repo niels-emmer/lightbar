@@ -17,6 +17,7 @@ class Experiment(BaseModel):
 class EngineStatus(BaseModel):
     running: bool
     light_on: bool
+    timer_paused: bool
     device_online: bool
     current_experiment: Optional[Experiment]
     current_step_index: int
@@ -29,6 +30,10 @@ class EngineStatus(BaseModel):
 
 class PowerRequest(BaseModel):
     on: bool
+
+
+class PauseRequest(BaseModel):
+    paused: bool
 
 
 class LogEntry(BaseModel):

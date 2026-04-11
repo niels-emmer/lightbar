@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from config import get_settings
 from engine import ExperimentEngine
 from lightbar import LightbarDriver
-from models import EngineStatus, PromptRequest, PowerRequest
+from models import EngineStatus, PromptRequest, PowerRequest, PauseRequest
 
 logging.basicConfig(
     level=logging.INFO,
@@ -93,6 +93,14 @@ async def set_power(body: PowerRequest):
         raise HTTPException(503, "Engine not ready")
     await engine.set_power(body.on)
     return {"ok": True, "light_on": body.on}
+
+
+@app.post("/api/pause")
+def set_pause(body: PauseRequest):
+    if not engine:
+        raise HTTPException(503, "Engine not ready")
+    engine.set_timer_paused(body.paused)
+    return {"ok": True, "timer_paused": body.paused}
 
 
 @app.post("/api/skip")

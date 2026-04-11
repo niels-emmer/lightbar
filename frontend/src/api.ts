@@ -18,6 +18,7 @@ export interface Experiment {
 export interface EngineStatus {
   running: boolean;
   light_on: boolean;
+  timer_paused: boolean;
   device_online: boolean;
   current_experiment: Experiment | null;
   current_step_index: number;
@@ -67,6 +68,15 @@ export async function setPower(on: boolean): Promise<void> {
 
 export async function skipExperiment(): Promise<void> {
   const r = await fetch("/api/skip", { method: "POST" });
+  if (!r.ok) throw new Error(`Status ${r.status}`);
+}
+
+export async function setTimerPaused(paused: boolean): Promise<void> {
+  const r = await fetch("/api/pause", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paused }),
+  });
   if (!r.ok) throw new Error(`Status ${r.status}`);
 }
 

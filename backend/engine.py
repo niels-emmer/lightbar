@@ -103,6 +103,7 @@ class ExperimentEngine:
 
         self.running = False
         self._light_on = True
+        self._timer_paused = False
         self.current_experiment: Optional[Experiment] = None
         self.current_act_index: int = 0
         self.current_h: float = 0.0
@@ -140,8 +141,14 @@ class ExperimentEngine:
 
     def skip(self):
         """Abort current experiment and immediately generate the next one."""
+        self._timer_paused = False  # skip always clears pause
         self._abort_current.set()
         self._log("user", "Skipping to next experiment")
+
+    def set_timer_paused(self, paused: bool):
+        """Pause/unpause the experiment timer. Current program keeps running."""
+        self._timer_paused = paused
+        self._log("user", "Timer paused — holding current program" if paused else "Timer resumed")
 
     async def set_power(self, on: bool):
         loop = asyncio.get_event_loop()
@@ -167,13 +174,14 @@ class ExperimentEngine:
 
     def get_status(self) -> EngineStatus:
         next_in = None
-        if self.experiment_started_at and self.current_experiment:
+        if self.experiment_started_at and self.current_experiment and not self._timer_paused:
             elapsed = (datetime.now(timezone.utc) - self.experiment_started_at).total_seconds()
             total = self.current_experiment.duration_minutes * 60
             next_in = max(0, int(total - elapsed))
         return EngineStatus(
             running=self.running,
             light_on=self._light_on,
+            timer_paused=self._timer_paused,
             device_online=self._lb.online,
             current_experiment=self.current_experiment,
             current_step_index=self.current_act_index,
@@ -382,10 +390,12 @@ Rules:
         act_idx = 0
         while True:
             elapsed = asyncio.get_event_loop().time() - started
-            if elapsed >= duration_sec:
-                break
+            timer_expired = elapsed >= duration_sec
+
             if self._abort_current.is_set():
                 self._log("info", "Interrupted by user prompt")
+                break
+            if timer_expired and not self._timer_paused:
                 break
 
             act = acts[act_idx % act_count]
@@ -396,7 +406,10 @@ Rules:
             self._log("device", f'Act {self.current_act_index + 1}/{act_count}: {pattern_name}',
                       {k: v for k, v in act.items() if k not in ("pattern", "duration_sec")})
 
-            await self._run_act(act, min(act_dur, duration_sec - elapsed))
+            # When timer has expired and paused, run acts at their full duration.
+            # Otherwise clamp to remaining time so the loop exits cleanly.
+            time_limit = act_dur if timer_expired else min(act_dur, duration_sec - elapsed)
+            await self._run_act(act, time_limit)
 
             act_idx += 1
 

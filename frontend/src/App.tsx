@@ -10,13 +10,14 @@ import {
   Title,
   Tooltip,
 } from "@mantine/core";
-import { IconPlayerSkipForward, IconPower } from "@tabler/icons-react";
+import { IconPlayerPause, IconPlayerPlay, IconPlayerSkipForward, IconPower } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import {
   createEventSource,
   fetchExperiments,
   fetchStatus,
   setPower,
+  setTimerPaused,
   skipExperiment,
   type EngineStatus,
   type Experiment,
@@ -105,6 +106,14 @@ export default function App() {
     } catch {}
   }
 
+  async function handlePause() {
+    if (!status) return;
+    try {
+      await setTimerPaused(!status.timer_paused);
+      setStatus((s) => s ? { ...s, timer_paused: !s.timer_paused } : s);
+    } catch {}
+  }
+
   return (
     <AppShell header={{ height: 48 }} padding="md">
       <AppShell.Header
@@ -151,6 +160,19 @@ export default function App() {
                 disabled={!status}
               >
                 <IconPlayerSkipForward size={14} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label={status?.timer_paused ? "resume timer" : "pause timer"} position="bottom">
+              <ActionIcon
+                variant={status?.timer_paused ? "light" : "subtle"}
+                color={status?.timer_paused ? "yellow" : "gray"}
+                size="sm"
+                onClick={handlePause}
+                disabled={!status}
+              >
+                {status?.timer_paused
+                  ? <IconPlayerPlay size={14} />
+                  : <IconPlayerPause size={14} />}
               </ActionIcon>
             </Tooltip>
             <Tooltip label={status?.light_on ? "turn off" : "turn on"} position="bottom">
