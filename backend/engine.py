@@ -305,7 +305,7 @@ Compose a light program as a JSON object:
   "theme": "evocative short name",
   "inspiration": "one phrase",
   "description": "one sentence — what the viewer sees",
-  "duration_minutes": 7,
+  "duration_minutes": {self._settings.experiment_interval_minutes},
   "acts": [
     {{"pattern": "aurora", "center_hue": 160, "hue_range": 50, "saturation": 85, "value_center": 55, "value_range": 30, "duration_sec": 120}},
     {{"pattern": "breathe", "hue": 200, "saturation": 70, "value_min": 15, "value_max": 75, "period_sec": 5, "duration_sec": 90}}
@@ -313,7 +313,7 @@ Compose a light program as a JSON object:
 }}
 
 Rules:
-- 2-5 acts, they cycle for duration_minutes
+- 2-5 acts, they cycle for the full {self._settings.experiment_interval_minutes} minutes
 - Each act must include "pattern" and "duration_sec" (15-180)
 - Use varied patterns — mix whole-bar and segment patterns for contrast
 - Segment patterns (gradient, plasma, comet, ripple, twinkle, ember, split) update slowly — good for sustained ambience; pair them with a faster whole-bar act
@@ -349,7 +349,7 @@ Rules:
                 theme=data["theme"],
                 inspiration=data["inspiration"],
                 description=data["description"],
-                duration_minutes=max(4, min(15, int(data.get("duration_minutes", 7)))),
+                duration_minutes=self._settings.experiment_interval_minutes,
                 acts=acts,
                 created_at=datetime.now(timezone.utc),
                 prompted_by=user_prompt,
