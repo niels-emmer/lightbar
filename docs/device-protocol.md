@@ -75,3 +75,47 @@ status = d.status()
 ## Known DPs
 
 See `docs/memory/records/dp-map.md` for full map including unknown DPs.
+
+## Per-segment control (DP 61) — discovered 2026-04-11
+
+The lightbar has **20 individually addressable segments** (1–20, left to right).
+Each segment is controlled by writing a base64-encoded 13-byte payload to **DP 61**
+while DP 21 is set to **`'colour'`**. The device silently discards DP 61 writes when DP 21 is `'scene'`.
+
+### Payload structure
+
+```
+[0x00][0x01][0x00][0x14][MODE][H_hi][H_lo][S_hi][S_lo][V_hi][V_lo][0x81][SEG]
+  ^     ^     ^     ^     ^    └──── Hue 0-360 ────┘ └─ Sat 0-1000 ─┘
+  │     │     │     │     │                           └─ Val 0-1000 ─┘
+  │     │     │     │     0x01 = ON  /  0x02 = OFF
+  │     │     │     20 = total segment count (hardcoded)
+  │     │     reserved
+  │     always 1
+  reserved
+```
+
+Last byte `SEG` is the 1-based segment index (1–20).
+Hue, Saturation, and Value use the **same scale as DP 24** (hue raw 0–360; sat/val 0–1000).
+Byte 11 is always `0x81` — do not change.
+
+### Quick example
+
+```python
+import base64
+
+def segment_payload(seg: int, h: int, s: int, v: int, on: bool = True) -> str:
+    """seg 1-20, h 0-360, s 0-1000, v 0-1000"""
+    mode = 0x01 if on else 0x02
+    data = bytes([0x00, 0x01, 0x00, 0x14, mode,
+                  h >> 8, h & 0xFF, s >> 8, s & 0xFF, v >> 8, v & 0xFF,
+                  0x81, seg])
+    return base64.b64encode(data).decode()
+
+d.set_value(21, "colour")   # 'colour' mode required — NOT 'scene'
+d.set_value(61, segment_payload(1, h=0, s=1000, v=1000))   # seg 1 → red
+d.set_value(61, segment_payload(1, on=False, h=0, s=0, v=0))  # seg 1 → off
+```
+
+Use `LightbarDriver.set_segment()` / `set_segment_off()` from `backend/lightbar.py`
+for the thread-safe wrapped version.

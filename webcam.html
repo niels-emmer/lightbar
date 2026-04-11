@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Lightbar Webcam</title>
+<style>
+  body { margin:0; background:#111; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; font-family:monospace; }
+  video { width:900px; max-width:100vw; border:2px solid #333; border-radius:6px; }
+  #status { color:#888; margin-top:10px; font-size:13px; }
+</style>
+</head>
+<body>
+<video id="v" autoplay playsinline muted></video>
+<div id="status">Requesting camera access…</div>
+<script>
+navigator.mediaDevices.getUserMedia({ video: { width:1280, height:720, facingMode:'environment' } })
+  .then(s => { document.getElementById('v').srcObject = s; document.getElementById('status').textContent = 'Camera live ✓'; })
+  .catch(e => { document.getElementById('status').textContent = 'Camera error: ' + e.message; });
+</script>
+</body>
+</html>

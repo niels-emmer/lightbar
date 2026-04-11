@@ -1,4 +1,5 @@
 import {
+  ActionIcon,
   AppShell,
   Box,
   Divider,
@@ -7,12 +8,16 @@ import {
   Paper,
   Text,
   Title,
+  Tooltip,
 } from "@mantine/core";
+import { IconPlayerSkipForward, IconPower } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import {
   createEventSource,
   fetchExperiments,
   fetchStatus,
+  setPower,
+  skipExperiment,
   type EngineStatus,
   type Experiment,
   type LogEntry,
@@ -83,8 +88,21 @@ export default function App() {
   }, []);
 
   function handlePromptSent() {
-    // Refresh experiments list shortly after sending
     setTimeout(() => fetchExperiments().then(setExperiments).catch(() => {}), 3000);
+  }
+
+  async function handlePower() {
+    if (!status) return;
+    try {
+      await setPower(!status.light_on);
+      setStatus((s) => s ? { ...s, light_on: !s.light_on } : s);
+    } catch {}
+  }
+
+  async function handleSkip() {
+    try {
+      await skipExperiment();
+    } catch {}
   }
 
   return (
@@ -118,11 +136,35 @@ export default function App() {
               ai control system
             </Text>
           </Group>
-          {status?.current_experiment && (
-            <Text size="xs" c="violet.4" ff="monospace">
-              {status.current_experiment.theme}
-            </Text>
-          )}
+          <Group gap="xs">
+            {status?.current_experiment && (
+              <Text size="xs" c="violet.4" ff="monospace">
+                {status.current_experiment.theme}
+              </Text>
+            )}
+            <Tooltip label="skip to next experiment" position="bottom">
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="sm"
+                onClick={handleSkip}
+                disabled={!status}
+              >
+                <IconPlayerSkipForward size={14} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label={status?.light_on ? "turn off" : "turn on"} position="bottom">
+              <ActionIcon
+                variant="subtle"
+                color={status?.light_on ? "teal" : "red"}
+                size="sm"
+                onClick={handlePower}
+                disabled={!status}
+              >
+                <IconPower size={14} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
         </Group>
       </AppShell.Header>
 

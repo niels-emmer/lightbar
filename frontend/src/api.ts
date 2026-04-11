@@ -17,6 +17,7 @@ export interface Experiment {
 
 export interface EngineStatus {
   running: boolean;
+  light_on: boolean;
   device_online: boolean;
   current_experiment: Experiment | null;
   current_step_index: number;
@@ -52,6 +53,20 @@ export async function postPrompt(prompt: string): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt }),
   });
+  if (!r.ok) throw new Error(`Status ${r.status}`);
+}
+
+export async function setPower(on: boolean): Promise<void> {
+  const r = await fetch("/api/power", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ on }),
+  });
+  if (!r.ok) throw new Error(`Status ${r.status}`);
+}
+
+export async function skipExperiment(): Promise<void> {
+  const r = await fetch("/api/skip", { method: "POST" });
   if (!r.ok) throw new Error(`Status ${r.status}`);
 }
 

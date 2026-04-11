@@ -1,6 +1,6 @@
 # lightbar
 
-An AI-controlled RGB gaming lightbar. Claude Haiku generates evolving light programs — themes, moods, patterns — and a Python engine executes them in real time at 10 Hz directly to the hardware. You can steer it by typing prompts in a small web UI.
+An AI-controlled RGB gaming lightbar. Claude Haiku generates evolving light programs — themes, moods, patterns — and a Python engine executes them in real time directly to the hardware. Each of the bar's 20 LED segments is individually addressable; the AI can paint gradients, comets, plasma ripples, fire simulations, and more across the full length of the bar. You can steer it by typing prompts in a small web UI, or interrupt it with the power and skip buttons in the header.
 
 This is not a product. It has no real use case. It exists because it was fun to build, and because building it taught more about agentic AI coding in a few hours than weeks of reading about it could.
 
@@ -14,10 +14,11 @@ The key insight: just as Claude Code closes the UI design loop by letting the ag
 
 ## What it does
 
-- **Claude Haiku** generates a "light program" every ~7 minutes: a theme, a description, and a sequence of acts (e.g. `thunder → aurora → breathe → drift`)
-- Each act specifies a named pattern and its parameters. Python computes the HSV color at 10 Hz and sends it to the device over the local network via Tuya v3.5
+- **Claude Haiku** generates a "light program" every ~7 minutes: a theme, a description, and a sequence of acts (e.g. `gradient → thunder → ember → palette_cycle`)
+- Acts choose from 18 named patterns. Whole-bar patterns compute a single HSV value at 10 Hz; segment patterns address each of the 20 LEDs individually every ~4 seconds
 - The AI uses real context: current time, day of week, and live weather from Open-Meteo
 - You can interrupt and redirect it mid-program by typing a prompt ("make it feel like a thunderstorm" / "slow warm ember")
+- Header buttons let you **skip** to a new experiment immediately, or **turn the bar off** and pause the engine
 - A web UI shows what's running, the live HSV readout, a progress bar, and a scrolling console of all AI and device events
 
 ---
@@ -99,9 +100,9 @@ WEATHER_LON=4.89
 docker compose up --build
 ```
 
-Then open `http://localhost:8000`.
+Then open `http://localhost:8042`.
 
-> **Note:** The container uses `network_mode: host` so tinytuya can reach the Tuya device on your LAN. This is required — Tuya local control talks directly to the device IP, and bridge networking adds routing complexity. If running on a remote VPS, you'll need a VPN (Tailscale or WireGuard) that puts the container on the same network as the device.
+> **Note:** The container maps port 8042 → 8000 internally and uses bridge networking. tinytuya reaches the Tuya device on your LAN via the host's network stack. If running on a remote VPS, you'll need a VPN (Tailscale or WireGuard) that puts the host on the same network as the device, or uncomment `network_mode: host` in `docker-compose.yml` and change the port mapping accordingly.
 
 **Local dev:**
 ```bash
@@ -127,11 +128,12 @@ The session went roughly:
 
 1. **Research the device** — probed the Tuya DPs live, confirmed DP 24 is the color register, reverse-engineered the encoding (`HHHHSSSSVVVV`, hue raw not scaled)
 2. **Backend scaffold** — FastAPI app, tinytuya wrapper, config via pydantic-settings
-3. **Pattern engine** — 9 animated patterns: `breathe`, `wheel`, `pulse`, `strobe`, `aurora`, `lfo_pair`, `thunder`, `campfire`, `drift`; stateless and stateful, dispatched at 10 Hz
+3. **Pattern engine** — 11 whole-bar patterns: `breathe`, `wheel`, `pulse`, `strobe`, `aurora`, `lfo_pair`, `thunder`, `campfire`, `drift`, `palette_cycle`, `glitch`; stateless and stateful, dispatched at 10 Hz
 4. **AI loop** — Claude Haiku generates `{ theme, description, acts[] }` JSON; Python executes the acts cyclically; smooth HSV crossfades between acts
-5. **Frontend** — React + Mantine status panel, live SSE console, prompt input, experiment history
+5. **Frontend** — React + Mantine status panel, live SSE console, prompt input, experiment history, power and skip controls
 6. **Debugging** — several interesting failure modes along the way (see below)
-7. **Dockerize** — multi-stage build, host networking for LAN device access
+7. **Dockerize** — multi-stage build, bridge networking, port 8042
+8. **Per-segment control** — reverse-engineered DP 61 via passive TCP sniffing, decoded its 13-byte payload structure, added 7 spatial patterns (`gradient`, `plasma`, `comet`, `ripple`, `twinkle`, `ember`, `split`) that paint each of the 20 LED segments independently
 
 ### Debugging moments worth noting
 
@@ -146,6 +148,8 @@ The session went roughly:
 **AI returned JSON with literal newlines inside string values.** Claude (when asked to return raw JSON without markdown) occasionally breaks long strings across lines, which is invalid JSON. Fixed with a regex post-processor that strips newlines from inside quoted strings before parsing.
 
 **Frontend crash broke the console.** After the model changed from `steps[]` to `acts[]`, a reference to `exp.steps.length` in `StatusPanel.tsx` caused a JS runtime exception that prevented the SSE connection from ever being established — so the console appeared broken even though the backend was fine.
+
+**Per-segment API found via webcam.** After reverse-engineering DP 61 and implementing `set_segment()`, the bar wasn't reacting at all — the code ran without errors but nothing changed visually. Rather than debugging blind, a webcam session was opened in Chrome pointing at the bar, giving the agent a live video feed as ground truth. It tried different DP 21 mode values while watching the feed. The moment the mode switched from `'scene'` to `'colour'`, a full 20-segment rainbow appeared on screen. The webcam confirmed the fix in the same instant the code ran — no guessing, no restart cycle, no "did it work?" uncertainty. The root cause: the device silently discards DP 61 writes when not in colour mode, returning no error.
 
 ---
 

@@ -3,9 +3,9 @@ services:
     build: .
     restart: unless-stopped
     # host networking so tinytuya can reach the Tuya device on your LAN
-    network_mode: host
+#    network_mode: host
     env_file: .env
     # alternatively, expose port 8000 and use bridge networking:
-    # ports:
-    #   - "8000:8000"
+    ports:
+      - "8042:8000"
     # (bridge mode works fine if you don't need LAN device access from inside the container)

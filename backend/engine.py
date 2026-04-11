@@ -24,6 +24,7 @@ import anthropic
 import patterns as pat
 from config import Settings
 from lightbar import LightbarDriver, tuya_to_hsv
+from patterns import SEGMENT_PATTERNS
 from models import Experiment, EngineStatus, LogEntry
 
 logger = logging.getLogger(__name__)
@@ -39,21 +40,43 @@ SYSTEM_PROMPT = (
 PATTERN_CATALOG = """
 PATTERNS (pick by name, combine into acts):
 
-Software patterns — single color animated by Python:
-breathe   hue(0-360), saturation(0-100), value_min(0-50), value_max(50-100), period_sec(2-10)
-wheel     saturation(0-100), value(20-100), start_hue(0-360), deg_per_sec(10-120)
-pulse     hue(0-360), saturation(0-100), value_peak(60-100), period_sec(0.5-4)
-strobe    hue(0-360), saturation(0-100), value(60-100), rate_hz(1-10), duty(0.1-0.9)
-aurora    center_hue(0-360), hue_range(10-90), saturation(60-100), value_center(30-70), value_range(10-40)
-lfo_pair  hue_a(0-360), hue_b(0-360), saturation(0-100), value(20-90), period_sec(4-20)
-thunder   bg_hue(200-260), bg_saturation(40-80), bg_value(3-15), flash_rate_per_min(5-25)
-campfire  intensity(0.3-1.0)
-drift     hue(0-360), saturation(50-100), value(30-70), hue_drift(10-60), value_drift(10-35), speed(0.2-1.0)
+━━ Whole-bar patterns — one color, animated by Python ━━
+breathe        hue(0-360), saturation(0-100), value_min(0-50), value_max(50-100), period_sec(2-10)
+wheel          saturation(0-100), value(20-100), start_hue(0-360), deg_per_sec(10-120)
+pulse          hue(0-360), saturation(0-100), value_peak(60-100), period_sec(0.5-4)
+strobe         hue(0-360), saturation(0-100), value(60-100), rate_hz(1-10), duty(0.1-0.9)
+aurora         center_hue(0-360), hue_range(10-90), saturation(60-100), value_center(30-70), value_range(10-40)
+lfo_pair       hue_a(0-360), hue_b(0-360), saturation(0-100), value(20-90), period_sec(4-20)
+thunder        bg_hue(200-260), bg_saturation(40-80), bg_value(3-15), flash_rate_per_min(5-25)
+campfire       intensity(0.3-1.0)
+drift          hue(0-360), saturation(50-100), value(30-70), hue_drift(10-60), value_drift(10-35), speed(0.2-1.0)
+palette_cycle  hues([h1,h2,...] 2-6 values 0-360), saturation(0-100), value(30-90), dwell_sec(3-12)
+               Dwells on each hue then cross-fades to the next. Great for mood progressions.
+               Example: {"pattern":"palette_cycle","hues":[15,45,200,280],"saturation":85,"value":65,"dwell_sec":8,"duration_sec":120}
+glitch         base_hue(0-360), saturation(0-100), value(40-80), glitch_rate(0.5-4), glitch_duration(0.05-0.25)
+               Steady color spiking with brief random hue flashes. Digital artifact energy.
 
-Hardware scenes — multi-color animations running natively on the device:
-scene     scene_type(0=static,1=flow,2=flash,3=wave), speed(0-100), colors([[R,G,B],...] 1-7 entries, each 0-255)
-          Use vivid RGB colors. scene_type 1 flows smoothly between colors, 2 flashes them, 3 creates a wave.
-          Example: {"pattern":"scene","scene_type":1,"speed":40,"colors":[[200,50,255],[50,200,255],[255,80,50]],"duration_sec":120}
+━━ Segment patterns — each of the 20 LEDs individually addressed ━━
+               These update every ~4 seconds (hardware constraint). Design for slow, ambient motion.
+gradient       hue_left(0-360), hue_right(0-360), saturation(0-100), value(20-100), speed(0-30)
+               Smooth hue spread across bar. speed slowly scrolls it. 0=static, 20=drifting.
+               Example: {"pattern":"gradient","hue_left":200,"hue_right":320,"saturation":90,"value":70,"speed":8,"duration_sec":120}
+plasma         center_hue(0-360), hue_range(20-120), saturation(60-100), value(30-80), speed(0.2-1.5)
+               Rippling interference of sine waves — each segment independently animated.
+comet          hue(0-360), saturation(0-100), value_peak(70-100), tail_length(3-8), speed(2-8)
+               Bright spark bouncing left↔right with an exponential fading tail.
+ripple         hue(0-360), saturation(0-100), value_min(10-50), value_max(60-100), wavelength(4-15), speed(1-5)
+               Traveling brightness wave; wavelength in segments.
+twinkle        base_hue(0-360), saturation(0-100), base_value(5-30), sparkle_value(70-100), rate(0.5-5)
+               Dim starfield with randomly igniting and fading bright points.
+ember          intensity(0.3-1.0)
+               Fire simulation: left segments yellow-hot, right segments deep-red cool, all flickering.
+split          hue_left(0-360), hue_right(0-360), saturation(0-100), value(20-100), split_pos(5-15), blend_width(0-5)
+               Left half one color, right half another. blend_width controls crossfade zone.
+
+━━ Hardware scenes — native device animation ━━
+scene          scene_type(0=static,1=flow,2=flash,3=wave), speed(0-100), colors([[R,G,B],...] 1-7 entries 0-255)
+               Example: {"pattern":"scene","scene_type":1,"speed":40,"colors":[[200,50,255],[50,200,255],[255,80,50]],"duration_sec":120}
 """
 
 WEATHER_CODES = {
@@ -79,6 +102,7 @@ class ExperimentEngine:
         self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
         self.running = False
+        self._light_on = True
         self.current_experiment: Optional[Experiment] = None
         self.current_act_index: int = 0
         self.current_h: float = 0.0
@@ -114,6 +138,22 @@ class ExperimentEngine:
         self._abort_current.set()
         self._log("user", f"Prompt received: {prompt}")
 
+    def skip(self):
+        """Abort current experiment and immediately generate the next one."""
+        self._abort_current.set()
+        self._log("user", "Skipping to next experiment")
+
+    async def set_power(self, on: bool):
+        loop = asyncio.get_event_loop()
+        self._light_on = on
+        if not on:
+            self._abort_current.set()
+            await loop.run_in_executor(None, lambda: self._lb.set_power(False))
+            self._log("user", "Light turned off")
+        else:
+            await loop.run_in_executor(None, lambda: self._lb.set_power(True))
+            self._log("user", "Light turned on")
+
     def subscribe_sse(self) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue(maxsize=200)
         self._sse_queues.append(q)
@@ -133,6 +173,7 @@ class ExperimentEngine:
             next_in = max(0, int(total - elapsed))
         return EngineStatus(
             running=self.running,
+            light_on=self._light_on,
             device_online=self._lb.online,
             current_experiment=self.current_experiment,
             current_step_index=self.current_act_index,
@@ -148,6 +189,9 @@ class ExperimentEngine:
     async def _loop(self):
         await self._probe_device()
         while self.running:
+            if not self._light_on:
+                await asyncio.sleep(1)
+                continue
             self._abort_current.clear()
             experiment = await self._generate_experiment()
             if experiment:
@@ -186,7 +230,7 @@ class ExperimentEngine:
                 None,
                 lambda: self._client.messages.create(
                     model=self._settings.ai_model,
-                    max_tokens=600,
+                    max_tokens=800,
                     system=SYSTEM_PROMPT,
                     messages=[{"role": "user", "content": user_msg}],
                 ),
@@ -263,7 +307,9 @@ Compose a light program as a JSON object:
 Rules:
 - 2-5 acts, they cycle for duration_minutes
 - Each act must include "pattern" and "duration_sec" (15-180)
-- Use varied patterns — do not repeat the same type twice in a row
+- Use varied patterns — mix whole-bar and segment patterns for contrast
+- Segment patterns (gradient, plasma, comet, ripple, twinkle, ember, split) update slowly — good for sustained ambience; pair them with a faster whole-bar act
+- palette_cycle: hues must be a JSON array of numbers e.g. "hues": [15, 120, 240]
 - Be dramatic, evocative, unexpected
 - No newlines inside string values"""
 
@@ -356,10 +402,40 @@ Rules:
 
         self._log("info", f'"{experiment.theme}" complete')
 
+    async def _run_segment_act(self, act: dict, duration_sec: float):
+        """Run a segment pattern. Each frame updates all 20 LEDs (~4s per sweep)."""
+        loop = asyncio.get_event_loop()
+        pattern_name = act.get("pattern", "gradient")
+        params = {k: v for k, v in act.items() if k not in ("pattern", "duration_sec")}
+        act_start = loop.time()
+        state = None
+
+        while True:
+            t = loop.time() - act_start
+            if t >= duration_sec or self._abort_current.is_set():
+                break
+
+            segments, state = pat.evaluate_segments(pattern_name, t, params, state)
+
+            # Expose midpoint segment as current HSV for the status API
+            mid = next((s for s in segments[8:12] if s is not None), None)
+            if mid:
+                self.current_h, self.current_s, self.current_v = mid
+
+            # Blocking sweep (~4s); no additional sleep needed
+            await loop.run_in_executor(
+                None, lambda s=segments: self._lb.set_all_segments(s, segment_delay=0.20)
+            )
+
     async def _run_act(self, act: dict, duration_sec: float):
         """Run a single act for up to duration_sec seconds."""
         loop = asyncio.get_event_loop()
         pattern_name = act.get("pattern", "drift")
+
+        # ── Segment pattern — 20 individual LEDs via set_all_segments ─────────
+        if pattern_name in SEGMENT_PATTERNS:
+            await self._run_segment_act(act, duration_sec)
+            return
 
         # ── Hardware scene — send once, device animates natively ──────────────
         if pattern_name == "scene":

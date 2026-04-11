@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from config import get_settings
 from engine import ExperimentEngine
 from lightbar import LightbarDriver
-from models import EngineStatus, PromptRequest
+from models import EngineStatus, PromptRequest, PowerRequest
 
 logging.basicConfig(
     level=logging.INFO,
@@ -85,6 +85,22 @@ def get_log(limit: int = 50):
         raise HTTPException(503, "Engine not ready")
     entries = list(engine.log_entries)[-limit:]
     return entries
+
+
+@app.post("/api/power")
+async def set_power(body: PowerRequest):
+    if not engine:
+        raise HTTPException(503, "Engine not ready")
+    await engine.set_power(body.on)
+    return {"ok": True, "light_on": body.on}
+
+
+@app.post("/api/skip")
+def skip_experiment():
+    if not engine:
+        raise HTTPException(503, "Engine not ready")
+    engine.skip()
+    return {"ok": True}
 
 
 @app.post("/api/prompt")
